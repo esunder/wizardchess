@@ -1,16 +1,18 @@
-import pickle
+from __future__ import print_function
+
+#import pickle
 import threading
-import RPi.GPIO as GPIO
-from motor_class import Motor
+#import RPi.GPIO as GPIO
+#from motor_class import Motor
 
-motor_x = Motor(17,18,27,22)
-motor_y = Motor(4,25,24,23)
-motor_x.init()
-motor_y.init()
+#motor_x = Motor(17,18,27,22)
+#motor_y = Motor(4,25,24,23)
+#motor_x.init()
+#motor_y.init()
 
-GPIO.setup(7, GPIO.OUT)
-GPIO.output(7,1)
-
+#GPIO.setup(7, GPIO.OUT)
+#GPIO.output(7,1)
+machineless = True
 motor_movement_dictionary_from_a1 = {
 "00":[0,0],
 "10":[0,0.65],
@@ -166,52 +168,58 @@ class castle(piece):
         piece.__init__(self,'castle', colour)
 
     def legal_move(self,rank_from,rank_to,file_from,file_to):
-        valid = True
-        if file_to > file_from or rank_to > rank_from:
-            direction = 1
-        else:
-            direction = -1
+        return parallel_legal_move(rank_from,rank_to,file_from,file_to)
 
-        if file_from != file_to and rank_from != rank_to:
-            valid = False
-        elif rank_from == rank_to:
-            for x_file in range(file_from+direction, file_to,direction):
-                if board[rank_to][x_file] != 0:
-                    valid = False
-                    break
-        elif file_from == file_to:
-            for x_rank in range(rank_from+direction, rank_to, direction):
-                if board[x_rank][file_to] != 0:
-                    valid = False
-                    break
-        return valid
+def parallel_legal_move(rank_from,rank_to,file_from,file_to):
+    valid = True
+    if file_to > file_from or rank_to > rank_from:
+        direction = 1
+    else:
+        direction = -1
+
+    if file_from != file_to and rank_from != rank_to:
+        valid = False
+    elif rank_from == rank_to:
+        for x_file in range(file_from+direction, file_to,direction):
+            if board[rank_to][x_file] != 0:
+                valid = False
+                break
+    elif file_from == file_to:
+        for x_rank in range(rank_from+direction, rank_to, direction):
+            if board[x_rank][file_to] != 0:
+                valid = False
+                break
+    return valid
+
+def diagonal_legal_move(rank_from,rank_to,file_from,file_to):
+    valid = True
+    if rank_to > rank_from:
+        direction = 1
+    else:
+        direction = -1
+
+    if(rank_from+file_from == rank_to+file_to):
+        y_file = file_from
+        for x_rank in range(rank_from+direction,rank_to,direction):
+            y_file -= direction
+            if board[x_rank][y_file] != 0:
+                return False
+    elif (rank_to-file_to)==(rank_from-file_from):
+        y_file = file_from
+        for x_rank in range(rank_from+direction,rank_to,direction):
+            y_file += direction
+            if board[x_rank][y_file] != 0:
+                return False
+    else:
+        valid =  False
+    return valid
 
 class bishop(piece):
     def __init__(self,colour):
         piece.__init__(self,'bishop', colour)
 
     def legal_move(self,rank_from,rank_to,file_from,file_to):
-        valid = True
-        if rank_to > rank_from:
-            direction = 1
-        else:
-            direction = -1
-
-        if(rank_from+file_from == rank_to+file_to):
-            y_file = file_from
-            for x_rank in range(rank_from+direction,rank_to,direction):
-                y_file -= direction
-                if board[x_rank][y_file] != 0:
-                    return False
-        elif (rank_to-file_to)==(rank_from-file_from):
-            y_file = file_from
-            for x_rank in range(rank_from+direction,rank_to,direction):
-                y_file += direction
-                if board[x_rank][y_file] != 0:
-                    return False
-        else:
-            valid =  False
-        return valid
+        return diagonal_legal_move(rank_from,rank_to,file_from,file_to)
 
 class king(piece):
     def __init__(self,colour):
@@ -254,9 +262,9 @@ class queen(piece):
 
     def legal_move(self,rank_from,rank_to,file_from,file_to):
         valid = False
-        if bishop.legal_move(self,rank_from,rank_to,file_from,file_to):
+        if diagonal_legal_move(rank_from,rank_to,file_from,file_to):
             valid = True
-        elif castle.legal_move(self,rank_from,rank_to,file_from,file_to):
+        elif parallel_legal_move(rank_from,rank_to,file_from,file_to):
             valid = True
         return valid
 
@@ -389,40 +397,44 @@ def move_piece(board,move_from, move_to, move_type):
 
     physically_move_x_from = physically_move_from[0]
     physically_move_y_from = physically_move_from[1]
-    move_x = threading.Thread(group=None, target=motor_x.turn, args=(physically_move_x_from*Motor.REVOLUTION, Motor.ANTICLOCKWISE), name="motor_x")
-    move_y = threading.Thread(group=None, target=motor_y.turn, args=(physically_move_y_from*Motor.REVOLUTION, Motor.CLOCKWISE), name="motor_y")
-    move_x.start()
-    move_y.start()
-	move_x.join()
-	move_y.join()
+    if not machineless:
+        # No motors in machine-less mode
+        move_x = threading.Thread(group=None, target=motor_x.turn, args=(physically_move_x_from*Motor.REVOLUTION, Motor.ANTICLOCKWISE), name="motor_x")
+        move_y = threading.Thread(group=None, target=motor_y.turn, args=(physically_move_y_from*Motor.REVOLUTION, Motor.CLOCKWISE), name="motor_y")
+        move_x.start()
+        move_y.start()
+        move_x.join()
+        move_y.join()
 
     physically_move_x_to = physically_move_to[0]
     physically_move_y_to = physically_move_to[1]
 
     physically_move_x = physically_move_x_from - physically_move_x_to
     physically_move_y = physically_move_y_from - physically_move_y_to
-	
-    GPIO.output(7,0)
-    if physically_move_x < 0:
-        move_x = threading.Thread(group=None, target=motor_x.turn, args=((abs(physically_move_x))*Motor.REVOLUTION, Motor.CLOCKWISE), name="motor_x")
-    else:
-        move_x = threading.Thread(group=None, target=motor_x.turn, args=(physically_move_x*Motor.REVOLUTION, Motor.ANTICLOCKWISE), name="motor_x")
-    if physically_move_y < 0:
-        move_y = threading.Thread(group=None, target=motor_y.turn, args=((abs(physically_move_y))*Motor.REVOLUTION, Motor.ANTICLOCKWISE), name="motor_y")
-    else:
-        move_y = threading.Thread(group=None, target=motor_y.turn, args=(physically_move_y*Motor.REVOLUTION, Motor.CLOCKWISE), name="motor_y")
-    move_x.start()
-    move_y.start()
-	move_x.join()
-	move_y.join()
-    GPIO.output(7,1)
-	
-    reset_motor_x = threading.Thread(group=None, target=motor_x.turn, args=(physically_move_x_to*Motor.REVOLUTION, Motor.CLOCKWISE), name="reset_motor_x")
-    reset_motor_y = threading.Thread(group=None, target=motor_y.turn, args=(physically_move_y_to*Motor.REVOLUTION, Motor.ANTICLOCKWISE), name="reset_motor_y")
-    reset_motor_x.start()
-    reset_motor_y.start()
-	reset_motor_x.join()
-	reset_motor_y.join()
+
+    if not machineless:
+        GPIO.output(7,0)
+        if physically_move_x < 0:
+            move_x = threading.Thread(group=None, target=motor_x.turn, args=((abs(physically_move_x))*Motor.REVOLUTION, Motor.CLOCKWISE), name="motor_x")
+        else:
+            move_x = threading.Thread(group=None, target=motor_x.turn, args=(physically_move_x*Motor.REVOLUTION, Motor.ANTICLOCKWISE), name="motor_x")
+        if physically_move_y < 0:
+            move_y = threading.Thread(group=None, target=motor_y.turn, args=((abs(physically_move_y))*Motor.REVOLUTION, Motor.ANTICLOCKWISE), name="motor_y")
+        else:
+            move_y = threading.Thread(group=None, target=motor_y.turn, args=(physically_move_y*Motor.REVOLUTION, Motor.CLOCKWISE), name="motor_y")
+        move_x.start()
+        move_y.start()
+        move_x.join()
+        move_y.join()
+        GPIO.output(7,1)
+
+    if not machineless:
+        reset_motor_x = threading.Thread(group=None, target=motor_x.turn, args=(physically_move_x_to*Motor.REVOLUTION, Motor.CLOCKWISE), name="reset_motor_x")
+        reset_motor_y = threading.Thread(group=None, target=motor_y.turn, args=(physically_move_y_to*Motor.REVOLUTION, Motor.ANTICLOCKWISE), name="reset_motor_y")
+        reset_motor_x.start()
+        reset_motor_y.start()
+        reset_motor_x.join()
+        reset_motor_y.join()
 
     board[rank_from][file_from] = 0
     piece_to_move.moves_list.append(move_from+move_symbol+move_to)
@@ -445,20 +457,20 @@ def take_piece(piece_taken,move_to):
     move_motor_y = threading.Thread(group=None, target=motor_y.turn, args=(physically_take_piece_move_motor_y*Motor.Revolution, Motor.CLOCKWISE), name="take_piece_motor_x")
     move_motor_x.start()
     move_motor_y.start()
-	move_motor_x.join()
-	move_motor_y.join()
+    move_motor_x.join()
+    move_motor_y.join()
 
     GPIO.output(7,0)
     physically_move_piece_out_of_game = 5.2 - physically_take_piece_move_motor_x
     motor_x.turn(physically_move_piece_out_of_game, Motor.CLOCKWISE)
     GPIO.output(7,1)
-	
+
     reset_motor_x = threading.Thread(group=None, target=motor_x.turn, args=(0.65*Motor.REVOLUTION, Motor.ANTICLOCKWISE), name="reset_motor_x")
     reset_motor_y = threading.Thread(group=None, target=motor_y.turn, args=(physically_take_piece_move_motor_y*Motor.REVOLUTION, Motor.ANTICLOCKWISE), name="reset_motor_y")
     reset_motor_x.start()
     reset_motor_y.start()
-	reset_motor_x.join()
-	reset_motor_y.join()
+    reset_motor_x.join()
+    reset_motor_y.join()
 
 def castling(rank_from,file_from,file_to):
     if file_to > file_from:
@@ -499,12 +511,14 @@ def check_valid_move(board,move_from,move_to,current_player,comments,players_mov
         if comments:print("A "+board[rank_from][file_from].piece_type+" cannot make that move!")
         valid_move = False
     elif players_move:
-        if not moving_into_check(move_from,move_to,current_player):
+        if not moving_into_check(move_from,move_to,current_player,comments):
             if comments:print("You cannot move into check!")
             valid_move = False
+
+    if comments:print("Valid move detected")
     return valid_move
 
-def moving_into_check(move_from, move_to,current_player):
+def moving_into_check(move_from, move_to,current_player,comments):
     valid_move = True
     rank_from = int(move_from[0])
     file_from = int(move_from[1])
@@ -714,6 +728,7 @@ if __name__ == '__main__':
                 print('Please Enter a valid move!')
 
         move_type = get_move_type(board,move_from, move_to)
+        print (move_type)
         move_piece(board,move_from,move_to,move_type)
         display_board(board)
         if check_in_check(board,change_current_player(current_player),move_to):
